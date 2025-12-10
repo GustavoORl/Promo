@@ -7,7 +7,7 @@ const GROUP_ID = "120363422814810115@g.us";
 
 // Roda a cada 7 minutos 
 cron.schedule("*/6 * * * *", async () => {
-  console.log("⏳ Cron Job: buscando proximo item da fila...");
+  console.log("⏳ Cron Job: buscando 2 itens da fila...");
   try { // pega os 2 itens pendentes mais antigos 
     const itens = await Queue.find({ status: "pendente" })
       .sort({ addedAt: 1 })
