@@ -1,0 +1,4 @@
+2025/12/09-18:04:10.327 4728 Reusing MANIFEST C:\Users\gusta\Documents\promo\promo\backend\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/12/09-18:04:10.328 4728 Recovering log #524
+2025/12/09-18:04:10.359 4728 Reusing old log C:\Users\gusta\Documents\promo\promo\backend\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000524.log 
+2025/12/09-18:04:14.617 26f4 Manual compaction at level-0 from '\x00\xad\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xae\x00\x00\x00' @ 0 : 0; will stop at (end)
