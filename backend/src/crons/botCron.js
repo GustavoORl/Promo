@@ -6,14 +6,14 @@ import { enviarMensagem } from "../bot/bot.js";
 const GROUP_ID = "120363422814810115@g.us";
 
 // Roda a cada 7 minutos
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/7 8-20 * * *", async () => {
   console.log("⏳ Cron Job: buscando 2 itens da fila...");
 
   try {
     // pega os 2 itens pendentes mais antigos
     const itens = await Queue.find({ status: "pendente" })
       .sort({ addedAt: 1 })
-      .limit(2);
+      .limit(1);
 
     if (!itens.length) {
       console.log("Nenhum item na fila.");
