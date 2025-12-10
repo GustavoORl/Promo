@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 
-mongoose.connect("mongodb://127.0.0.1:27017/promocoes");
+mongoose.connect("mongodb+srv://gustavoOrl:Atumcaiu12@promo.q9dleu7.mongodb.net/?appName=Promo");
 
 let db = mongoose.connection;
 

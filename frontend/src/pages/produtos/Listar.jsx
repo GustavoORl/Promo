@@ -25,7 +25,7 @@ export default function Listar() {
   });
 
   async function fetchProdutos() {
-    const res = await axios.get("http://localhost:3000/api/produtos");
+    const res = await axios.get("https://promo-vtvo.onrender.com/api/produtos");
     setProdutos(res.data);
   }
 
@@ -43,7 +43,7 @@ export default function Listar() {
   }
 
   try {
-    await axios.post("http://localhost:3000/api/bot/fila", {
+    await axios.post("https://promo-vtvo.onrender.com/api/bot/fila", {
       produtos: selecionados,
     });
 
@@ -59,7 +59,7 @@ export default function Listar() {
   // ENVIAR MULTIPLOS PRODUTOS
   async function enviarSelecionados() {
     try {
-        await axios.post("http://localhost:3000/api/bot/enviar", {
+        await axios.post("https://promo-vtvo.onrender.com/api/bot/enviar", {
             produtos: selecionados,
             chatId: "120363422814810115@g.us"
         });
@@ -76,10 +76,10 @@ export default function Listar() {
     if (!busca.trim()) return fetchProdutos();
 
     try {
-      let p = await axios.get(`http://localhost:3000/api/produtos/${busca}`);
+      let p = await axios.get(`https://promo-vtvo.onrender.com/api/produtos/${busca}`);
       setProdutos([p.data]);
     } catch {
-      const res = await axios.get("http://localhost:3000/api/produtos");
+      const res = await axios.get("https://promo-vtvo.onrender.com/api/produtos");
       const filtrados = res.data.filter((prod) =>
         prod.title.toLowerCase().includes(busca.toLowerCase())
       );
@@ -93,7 +93,7 @@ export default function Listar() {
   async function deletar(id) {
     if (!confirm("Tem certeza que deseja excluir?")) return;
 
-    await axios.delete(`http://localhost:3000/api/produtos/${id}`);
+    await axios.delete(`https://promo-vtvo.onrender.com/api/produtos/${id}`);
     fetchProdutos();
   }
 
@@ -115,7 +115,7 @@ export default function Listar() {
   }
 
   async function salvarEdicao() {
-    await axios.put(`http://localhost:3000/api/produtos/${editando}`, formEdit);
+    await axios.put(`https://promo-vtvo.onrender.com/api/produtos/${editando}`, formEdit);
     setEditando(null);
     fetchProdutos();
   }

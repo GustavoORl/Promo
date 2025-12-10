@@ -30,7 +30,7 @@ export default function Cadastrar() {
     setMsg("");
 
     try {
-      await axios.post("http://localhost:3000/api/produtos", form);
+      await axios.post("https://promo-vtvo.onrender.com/api/produtos", form);
       setMsg("Produto cadastrado com sucesso!");
 
       setForm({
@@ -55,7 +55,7 @@ export default function Cadastrar() {
     setMsg("Importando produtos da Shopee...");
 
     try {
-      const res = await axios.get(`http://localhost:3000/api/shopee/import?keyword=${keyword}&limit=${limit}`);
+      const res = await axios.get(`https://promo-vtvo.onrender.com/api/shopee/import?keyword=${keyword}&limit=${limit}`);
       setMsg(`Importação concluída! ${res.data.imported} produtos importados. ${res.data.skippedBlocked} produtos bloqueados(roupas). ${res.data.skippedDuplicate} items bloqueados(duplicados)`);
     } catch (err) {
       console.log(err);
@@ -67,7 +67,7 @@ export default function Cadastrar() {
     setMsg("Atualizando produtos da Shopee...");
 
     try {
-      const res = await axios.get("http://localhost:3000/api/shopee/update");
+      const res = await axios.get("https://promo-vtvo.onrender.com/api/shopee/update");
       setMsg(`Atualização concluída! ${res.data.atualizados} produtos atualizados.`);
     } catch (err) {
       console.log(err);
