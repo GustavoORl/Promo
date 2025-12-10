@@ -1,13 +1,18 @@
 import express from "express";
 import Product from "../models/Product.js";
 import Queue from "../models/Queue.js";
-import { enviarMensagem } from "../bot/bot.js";
+import { enviarMensagem, isBotReady } from "../bot/bot.js";
 
 const router = express.Router();
 
 // ROTA PARA ENVIAR MÚLTIPLOS PRODUTOS
 router.post("/enviar", async (req, res) => {
     try {
+       if (!isBotReady()) {
+            return res.status(503).json({
+                error: "O bot ainda não está conectado ao WhatsApp"
+            });
+        }
         const { produtos, chatId } = req.body;
 
         if (!produtos || !chatId) {

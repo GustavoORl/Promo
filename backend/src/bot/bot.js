@@ -3,6 +3,11 @@ const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcode from 'qrcode-terminal';
 import axios from "axios";
 
+let botPronto = false;
+export function isBotReady() {
+  return botPronto;
+}
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -16,6 +21,7 @@ client.on('qr', qr => {
 });
 
 client.on('ready', () => {
+    botPronto = true;
     console.log('BOT DO WHATSAPP ESTÁ PRONTO!');
 });
 
