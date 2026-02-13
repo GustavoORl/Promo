@@ -40,7 +40,7 @@ export default function Cadastrar() {
       .replace(/\s+/g, "-")        // troca espaços por hífen
       .replace(/[^\w-]+/g, "");    // remove caracteres especiais
 
-    await axios.post("http://192.168.100.64:3000/api/produtos/", data);
+    await axios.post("https://promo-2tzd.onrender.com/api/produtos/", data);
 
     setMsg("Produto cadastrado com sucesso!");
 
@@ -67,7 +67,7 @@ export default function Cadastrar() {
     setMsg("Importando produtos da Shopee...");
 
     try {
-      const res = await axios.get(`http://192.168.100.64:3000/api/shopee/import?keyword=${keyword}&limit=${limit}`);
+      const res = await axios.get(`https://promo-2tzd.onrender.com/api/shopee/import?keyword=${keyword}&limit=${limit}`);
       setMsg(`Importação concluída! ${res.data.imported} produtos importados. ${res.data.skippedBlocked} produtos bloqueados(roupas). ${res.data.skippedDuplicate} items bloqueados(duplicados)`);
     } catch (err) {
       console.log(err);
@@ -79,7 +79,7 @@ export default function Cadastrar() {
     setMsg("Atualizando produtos da Shopee...");
 
     try {
-      const res = await axios.get("http://192.168.100.64:3000/api/shopee/update");
+      const res = await axios.get("https://promo-2tzd.onrender.com/api/shopee/update");
       setMsg(`Atualização concluída! ${res.data.atualizados} produtos atualizados.`);
     } catch (err) {
       console.log(err);
