@@ -11,8 +11,9 @@ const client = new Client({
 });
 
 client.on('qr', qr => {
-    console.log('QR RECEBIDO: ');
-    qrcode.generate("qr", { small: true });
+    console.log('QR RECEBIDO. Escaneie abaixo:');
+    // Mudamos "qr" (string) para qr (variável) e removemos o small:true
+    qrcode.generate(qr, { small: false });
 });
 
 client.on('ready', () => {
