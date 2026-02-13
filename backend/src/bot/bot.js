@@ -1,6 +1,7 @@
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcode from 'qrcode-terminal';
+import QRCodeLib from 'qrcode'; // Biblioteca para gerar base64
 import axios from "axios";
 
 const client = new Client({
@@ -10,9 +11,19 @@ const client = new Client({
     }
 });
 
-client.on('qr', qr => {
-    console.log('QR RECEBIDO: ');
+// Evento QR
+client.on('qr', async qr => {
+    console.log('QR RECEBIDO (ASCII local, se terminal suportar):');
     qrcode.generate(qr, { small: true });
+
+    try {
+        // Gera QR Code como URL base64
+        const qrBase64 = await QRCodeLib.toDataURL(qr);
+        console.log('QR Code Base64 (abra no navegador para escanear):');
+        console.log(qrBase64);
+    } catch (err) {
+        console.log('Erro ao gerar QR Code base64:', err);
+    }
 });
 
 client.on('ready', () => {
@@ -30,7 +41,7 @@ export async function enviarMensagem(produto, groupId) {
     const base64Image = Buffer.from(resposta.data, "binary").toString("base64");
     const media = new MessageMedia("image/jpeg", base64Image);
 
-    // 👉 Só exibe preço original se for MAIOR que o preço atual
+    // Só exibe preço original se for MAIOR que o preço atual
     let precoOriginalLinha = "";
     if (produto.price_original && produto.price_original > produto.price) {
       precoOriginalLinha = `❌ DE: ~R$ ${produto.price_original}~\n`;
@@ -79,7 +90,6 @@ function montarMensagem(produto) {
 
   return msg;
 }
-
 
 // SCRIPT PARA SABER O ID DE UM GRUPO
 // client.on('ready', async () => {
