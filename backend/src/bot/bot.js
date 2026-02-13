@@ -12,7 +12,7 @@ const client = new Client({
 
 client.on('qr', qr => {
     console.log('QR RECEBIDO: ');
-    qrcode.generate("https://promo-blush.vercel.app/produtos/listar", { small: true });
+    qrcode.generate("qr", { small: true });
 });
 
 client.on('ready', () => {
