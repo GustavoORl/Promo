@@ -10,10 +10,21 @@ const client = new Client({
     }
 });
 
+// Substitua o seu client.on('qr', ...) por este:
 client.on('qr', qr => {
-    console.log('QR RECEBIDO. Escaneie abaixo:');
-    // Mudamos "qr" (string) para qr (variável) e removemos o small:true
+    console.log('--- NOVO QR CODE GERADO ---');
+    
+    // 1. Tenta gerar no terminal (com small: false para reduzir distorção)
     qrcode.generate(qr, { small: false });
+
+    // 2. SOLUÇÃO DEFINITIVA: Link para o navegador
+    // Isso usa a API do Google para criar uma imagem perfeita do seu código
+    const qrUrl = `https://chart.googleapis.com/chart?cht=qr&chl=${encodeURIComponent(qr)}&chs=300x300`;
+    
+    console.log('\n⚠️ O LOG DO RENDER DISTORCE O QR CODE ACIMA ⚠️');
+    console.log('👉 CLIQUE NO LINK ABAIXO PARA ESCANEAR PELO NAVEGADOR:');
+    console.log(qrUrl);
+    console.log('\n-------------------------------------------');
 });
 
 client.on('ready', () => {
