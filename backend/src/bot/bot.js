@@ -10,19 +10,17 @@ const client = new Client({
     }
 });
 
-// Substitua o seu client.on('qr', ...) por este:
 client.on('qr', qr => {
     console.log('--- NOVO QR CODE GERADO ---');
     
-    // 1. Tenta gerar no terminal (com small: false para reduzir distorção)
+    // 1. Tenta mostrar no terminal (mesmo que saia torto, serve de aviso)
     qrcode.generate(qr, { small: false });
 
-    // 2. SOLUÇÃO DEFINITIVA: Link para o navegador
-    // Isso usa a API do Google para criar uma imagem perfeita do seu código
-    const qrUrl = `https://chart.googleapis.com/chart?cht=qr&chl=${encodeURIComponent(qr)}&chs=300x300`;
+    // 2. NOVO LINK (QuickChart API) - Mais estável que o Google
+    const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qr)}&size=300`;
     
     console.log('\n⚠️ O LOG DO RENDER DISTORCE O QR CODE ACIMA ⚠️');
-    console.log('👉 CLIQUE NO LINK ABAIXO PARA ESCANEAR PELO NAVEGADOR:');
+    console.log('👉 COPIE E COLE ESTE LINK NO NAVEGADOR PARA ESCANEAR:');
     console.log(qrUrl);
     console.log('\n-------------------------------------------');
 });
