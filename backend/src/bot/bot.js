@@ -4,9 +4,26 @@ import qrcode from 'qrcode-terminal';
 import axios from "axios";
 
 const client = new Client({
+    // Estratégia de autenticação local
     authStrategy: new LocalAuth(),
+    
+    // Aumenta o tempo para autenticar (evita o erro de "não foi possível conectar")
+    authTimeoutMs: 60000, 
+
     puppeteer: {
-        headless: true
+        headless: true,
+        // Flags fundamentais para o Puppeteer funcionar no Render (Linux)
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ],
+        // Simula um navegador comum para ser aceito pelo WhatsApp
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
     }
 });
 
