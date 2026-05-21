@@ -17,13 +17,15 @@ function generateAuthHeader(payload) {
 }
 
 // Busca uma página de produtos
-export async function fetchShopeeOffers(keyword, limit) {
+// page: número da página (começa em 1)
+// limit: quantidade por página (máx 50)
+export async function fetchShopeeOffers(keyword, limit = 5, page = 1) {
   const payloadObj = {
     query: `
       {
         productOfferV2(
           keyword: "${keyword}",
-          page: 1,
+          page: ${page},
           limit: ${limit},
           isAMSOffer: true,
           listType: 2,
@@ -72,27 +74,40 @@ export async function fetchShopeeOffers(keyword, limit) {
   }
 }
 
+// Busca múltiplas páginas até atingir o totalLimit desejado
 export async function fetchShopeeCustomLimit(keyword = "lovita", totalLimit = 200) {
   const allNodes = [];
   const pageLimit = 50; // cada página retorna no máximo 50 itens
-  const totalPages = Math.ceil(totalLimit / pageLimit);
 
-  for (let page = 1; page <= totalPages; page++) {
-    // Ajusta o limit da última página se precisar
-    const currentLimit = page === totalPages ? totalLimit - allNodes.length : pageLimit;
+  let page = 1;
+  let hasNextPage = true;
 
-    const data = await fetchShopeeOffers(keyword, page, currentLimit);
+  while (hasNextPage && allNodes.length < totalLimit) {
+    const remaining = totalLimit - allNodes.length;
+    const currentLimit = Math.min(remaining, pageLimit);
+
+    console.log(`📄 Buscando página ${page}, limit ${currentLimit}...`);
+
+    const data = await fetchShopeeOffers(keyword, currentLimit, page);
+
     if (!data || data.errors) {
-      console.error("Erro ao buscar página:", page);
+      console.error("❌ Erro ao buscar página:", page, data?.errors);
       break;
     }
 
-    const nodes = data.data.productOfferV2.nodes;
-    allNodes.push(...nodes);
+    const pageInfo = data.data?.productOfferV2?.pageInfo;
+    const nodes = data.data?.productOfferV2?.nodes;
 
-    // Se já atingiu ou ultrapassou o limite, para
-    if (allNodes.length >= totalLimit) break;
+    if (!nodes || nodes.length === 0) {
+      console.log("⚠️ Nenhum resultado na página", page);
+      break;
+    }
+
+    allNodes.push(...nodes);
+    hasNextPage = pageInfo?.hasNextPage ?? false;
+    page++;
   }
 
-  return allNodes.slice(0, totalLimit); // garante que não ultrapasse o limite
+  console.log(`✅ Total de produtos buscados: ${allNodes.length}`);
+  return allNodes.slice(0, totalLimit);
 }
