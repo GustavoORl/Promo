@@ -4,15 +4,10 @@ import qrcode from 'qrcode-terminal';
 import axios from "axios";
 
 const client = new Client({
-    // Estratégia de autenticação local
     authStrategy: new LocalAuth(),
-    
-    // Aumenta o tempo para autenticar (evita o erro de "não foi possível conectar")
-    authTimeoutMs: 60000, 
-
+    authTimeoutMs: 60000,
     puppeteer: {
         headless: true,
-        // Flags fundamentais para o Puppeteer funcionar no Render (Linux)
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -22,19 +17,21 @@ const client = new Client({
             '--no-zygote',
             '--disable-gpu'
         ],
-        // Simula um navegador comum para ser aceito pelo WhatsApp
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'
     }
 });
 
-// Estado global do QR code (acessível pela rota HTTP)
 let currentQrUrl = null;
 let botStatus = "inicializando";
+let clientReady = false;
+
+// Promise que resolve quando o client estiver pronto
+// Permite que enviarMensagem "aguarde" o cliente ficar ready
+let resolveReady;
+const readyPromise = new Promise(res => { resolveReady = res; });
 
 client.on('qr', qr => {
     console.log('--- NOVO QR CODE GERADO ---');
-    
-    // Gera URL do QR code via QuickChart (legível no navegador)
     currentQrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qr)}&size=300`;
     botStatus = "aguardando_qr";
 
@@ -42,85 +39,87 @@ client.on('qr', qr => {
     console.log('👉 Acesse o endpoint /api/bot/qr no seu navegador para escanear:');
     console.log(`   https://promo-scda.onrender.com/api/bot/qr`);
     console.log('\n-------------------------------------------');
-    
-    // Tenta exibir no terminal mesmo sabendo que pode distorcer
-    try {
-        qrcode.generate(qr, { small: true });
-    } catch (e) {
-        // ignora erros de terminal
-    }
+
+    try { qrcode.generate(qr, { small: true }); } catch (e) {}
+});
+
+client.on('authenticated', () => {
+    botStatus = "autenticado";
+    console.log('✅ WhatsApp autenticado com sucesso!');
 });
 
 client.on('ready', () => {
     currentQrUrl = null;
     botStatus = "conectado";
-    console.log('BOT DO WHATSAPP ESTÁ PRONTO!');
-});
-
-client.on('authenticated', () => {
-    botStatus = "autenticado";
-    console.log('WhatsApp autenticado com sucesso!');
+    clientReady = true;
+    resolveReady(); // libera qualquer envio que estava aguardando
+    console.log('🟢 BOT DO WHATSAPP ESTÁ PRONTO!');
 });
 
 client.on('auth_failure', (msg) => {
     botStatus = "erro_auth";
-    console.error('Falha na autenticação:', msg);
+    console.error('❌ Falha na autenticação:', msg);
 });
 
 client.on('disconnected', (reason) => {
     botStatus = "desconectado";
-    console.log('Bot desconectado:', reason);
+    clientReady = false;
+    console.log('🔴 Bot desconectado:', reason);
 });
 
 client.initialize();
 
-// Exporta estado para uso nas rotas
-export function getQrUrl() {
-    return currentQrUrl;
-}
+export function getQrUrl() { return currentQrUrl; }
+export function getBotStatus() { return botStatus; }
+export function isClientReady() { return clientReady; }
 
-export function getBotStatus() {
-    return botStatus;
+// Aguarda o client ficar ready com timeout configurável
+async function waitForClient(timeoutMs = 30000) {
+    if (clientReady) return true;
+    const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error(`Timeout: cliente não ficou pronto em ${timeoutMs / 1000}s`)), timeoutMs)
+    );
+    await Promise.race([readyPromise, timeout]);
+    return true;
 }
 
 export async function enviarMensagem(produto, groupId) {
-  try {
-    const resposta = await axios.get(produto.image_url, {
-      responseType: "arraybuffer"
-    });
+    try {
+        // Garante que o client está pronto antes de tentar enviar
+        if (!clientReady) {
+            console.log("⏳ Cliente ainda não está pronto, aguardando...");
+            await waitForClient(30000);
+        }
 
-    const base64Image = Buffer.from(resposta.data, "binary").toString("base64");
-    const media = new MessageMedia("image/jpeg", base64Image);
+        // Baixa a imagem do produto
+        const resposta = await axios.get(produto.image_url, {
+            responseType: "arraybuffer",
+            timeout: 15000
+        });
 
-    // 👉 Só exibe preço original se for MAIOR que o preço atual
-    let precoOriginalLinha = "";
-    if (produto.price_original && produto.price_original > produto.price) {
-      precoOriginalLinha = `❌ DE: ~R$ ${produto.price_original}~\n`;
+        const base64Image = Buffer.from(resposta.data, "binary").toString("base64");
+        const media = new MessageMedia("image/jpeg", base64Image);
+
+        // Monta o texto da mensagem
+        let precoOriginalLinha = "";
+        if (produto.price_original && produto.price_original > produto.price) {
+            precoOriginalLinha = `❌ DE: ~R$ ${produto.price_original}~\n`;
+        }
+
+        let precoAtualLinha = "";
+        if (produto.price_original > produto.price) {
+            precoAtualLinha = `🔥 POR: *R$ ${produto.price}*\n`;
+        } else {
+            precoAtualLinha = `💰 Preço: R$ ${produto.price}`;
+        }
+
+        const mensagem = `🔥 *OFERTA ESPECIAL* 🔥\n\n🛒 *${produto.title}*\n\n🏬 Loja: *${produto.store}*\n${precoOriginalLinha}${precoAtualLinha}\n\n🔗 Link: ${produto.affiliate_url}`;
+
+        await client.sendMessage(groupId, media, { caption: mensagem });
+        console.log(`✅ Mensagem enviada para ${groupId}: ${produto.title}`);
+
+    } catch (err) {
+        console.error("❌ Erro ao enviar:", err.message);
+        throw err; // propaga para a rota poder retornar erro adequado
     }
-
-    let precoAtualLinha = "";
-    if (produto.price_original > produto.price) {
-      precoAtualLinha = `🔥 POR: *R$ ${produto.price}*\n`;
-    } else {
-      precoAtualLinha = `💰 Preço: ${produto.price}`;
-    }
-
-    // Mensagem final
-    const mensagem = `
-🔥 *OFERTA ESPECIAL* 🔥
-
-🛒 *${produto.title}*
-
-🏬 Loja: *${produto.store}*
-${precoOriginalLinha}${precoAtualLinha}
-
-🔗 Link: ${produto.affiliate_url}
-    `;
-
-    await client.sendMessage(groupId, media, { caption: mensagem });
-
-    console.log("Mensagem enviada!");
-  } catch (err) {
-    console.log("Erro ao enviar:", err);
-  }
 }

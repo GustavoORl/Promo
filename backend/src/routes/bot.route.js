@@ -1,7 +1,7 @@
 import express from "express";
 import Product from "../models/Product.js";
 import Queue from "../models/Queue.js";
-import { enviarMensagem, getQrUrl, getBotStatus } from "../bot/bot.js";
+import { enviarMensagem, getQrUrl, getBotStatus, isClientReady } from "../bot/bot.js";
 
 const router = express.Router();
 
@@ -71,21 +71,47 @@ router.post("/enviar", async (req, res) => {
             return res.status(400).json({ error: "produtos[] e chatId são obrigatórios" });
         }
 
+        // Verifica se o bot está conectado antes de buscar produtos
+        if (!isClientReady()) {
+            const status = getBotStatus();
+            if (status === "aguardando_qr" || status === "inicializando") {
+                return res.status(503).json({
+                    error: "Bot ainda não está conectado ao WhatsApp.",
+                    status,
+                    instrucao: "Escaneie o QR code em /api/bot/qr e aguarde o status 'conectado'."
+                });
+            }
+        }
+
         const produtosData = await Product.find({ _id: { $in: produtos } });
 
         if (!produtosData.length) {
             return res.status(404).json({ error: "Nenhum produto encontrado" });
         }
 
+        const resultados = [];
         for (const p of produtosData) {
-            await enviarMensagem(p, chatId);
+            try {
+                await enviarMensagem(p, chatId);
+                resultados.push({ id: p._id, titulo: p.title, ok: true });
+                // Pequena pausa entre envios para não ser bloqueado
+                await new Promise(res => setTimeout(res, 1500));
+            } catch (err) {
+                resultados.push({ id: p._id, titulo: p.title, ok: false, erro: err.message });
+            }
         }
 
-        return res.json({ message: "Mensagens enviadas!" });
+        const enviados = resultados.filter(r => r.ok).length;
+        const falhas = resultados.filter(r => !r.ok).length;
+
+        return res.json({
+            message: `${enviados} mensagem(ns) enviada(s), ${falhas} falha(s).`,
+            resultados
+        });
 
     } catch (e) {
-        console.log(e);
-        res.status(500).json({ error: "Erro ao enviar mensagens" });
+        console.error(e);
+        res.status(500).json({ error: "Erro ao enviar mensagens", detalhe: e.message });
     }
 });
 
