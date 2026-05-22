@@ -16,20 +16,22 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://gustavoOrl:Atumcaiu12@
 
 const app = express();
 
-// CORS: permite o frontend do Vercel e localhost em dev
-const allowedOrigins = [
-    "https://promo-a267np6rp-gustavo-ribeiros-projects-e33bff59.vercel.app",
-    "https://promo-scda.onrender.com",
-    "http://localhost:5173",
-    "http://localhost:3000"
-];
+// CORS: aceita qualquer deploy do Vercel do projeto "promo" e localhost em dev
+// O Vercel gera URLs dinamicas a cada deploy (ex: promo-abc123-user.vercel.app)
+// por isso usamos regex em vez de lista fixa
+const vercelRegex = /^https:\/\/promo(-[a-z0-9]+-gustavo-ribeiros-projects-e33bff59)?\.vercel\.app$/;
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Permite requisicoes sem origin (ex: Postman, curl) e origens permitidas
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (
+            !origin ||
+            vercelRegex.test(origin) ||
+            origin === "http://localhost:5173" ||
+            origin === "http://localhost:3000"
+        ) {
             callback(null, true);
         } else {
+            console.warn("CORS bloqueado para origem:", origin);
             callback(new Error("CORS: origem nao permitida: " + origin));
         }
     },
@@ -46,13 +48,10 @@ app.use("/api/bot", botRoutes);
 app.use("/api/awin/importar", awinRoutes);
 app.use("/api/shopee", shopeeRoutes);
 
-// Sobe o servidor ANTES de conectar ao banco
-// para o Render detectar a porta e nao matar o processo
 app.listen(PORT, () => {
     console.log("Server rodando na Porta " + PORT);
 });
 
-// Captura erros nao tratados para evitar crash do processo
 process.on("uncaughtException", (err) => {
     console.error("Erro nao capturado:", err.message);
 });
@@ -61,7 +60,6 @@ process.on("unhandledRejection", (reason) => {
     console.error("Promise rejeitada nao tratada:", reason);
 });
 
-// Conecta ao MongoDB com retry, depois inicializa o bot
 async function connectDB() {
     const maxRetries = 5;
     let attempt = 0;
@@ -72,8 +70,6 @@ async function connectDB() {
             console.log("Tentando conectar ao MongoDB (tentativa " + attempt + "/" + maxRetries + ")...");
             await mongoose.connect(MONGO_URI);
             console.log("MongoDB conectado com sucesso!");
-
-            // Inicia cron e bot apenas apos o banco estar pronto
             await import("./crons/botCron.js");
             await inicializarBot();
             return;
