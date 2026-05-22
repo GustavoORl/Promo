@@ -16,24 +16,23 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://gustavoOrl:Atumcaiu12@
 
 const app = express();
 
-// CORS: aceita qualquer deploy do Vercel do projeto "promo" e localhost em dev
-// O Vercel gera URLs dinamicas a cada deploy (ex: promo-abc123-user.vercel.app)
-// por isso usamos regex em vez de lista fixa
-const vercelRegex = /^https:\/\/promo(-[a-z0-9]+-gustavo-ribeiros-projects-e33bff59)?\.vercel\.app$/;
-
 app.use(cors({
     origin: (origin, callback) => {
-        if (
-            !origin ||
-            vercelRegex.test(origin) ||
-            origin === "http://localhost:5173" ||
-            origin === "http://localhost:3000"
-        ) {
-            callback(null, true);
-        } else {
-            console.warn("CORS bloqueado para origem:", origin);
-            callback(new Error("CORS: origem nao permitida: " + origin));
+        // Sem origin: Postman, curl, chamadas server-to-server
+        if (!origin) return callback(null, true);
+
+        // Aceita qualquer subdominio *.vercel.app (todos os deploys do seu projeto)
+        if (origin.endsWith(".vercel.app") || origin.endsWith(".onrender.com")) {
+            return callback(null, true);
         }
+
+        // Aceita localhost para desenvolvimento
+        if (origin.startsWith("http://localhost:")) {
+            return callback(null, true);
+        }
+
+        console.warn("CORS bloqueado para origem:", origin);
+        callback(new Error("CORS: origem nao permitida: " + origin));
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
