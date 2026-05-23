@@ -1,395 +1,442 @@
 import { useEffect, useState } from "react";
-import { Trash, Edit, Save, X } from "lucide-react";
+import { Trash, Edit, Save, X, Send, Clock, ChevronUp, ChevronDown, Search, CheckSquare, Square } from "lucide-react";
 import axios from "axios";
+
+const API = "https://promo-scda.onrender.com";
 
 export default function Listar() {
   const [produtos, setProdutos] = useState([]);
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState(null);
+  const [sortField, setSortField] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
-
-  const [selecionados, setSelecionados] = useState([]); // ⬅ NOVO
+  const [selecionados, setSelecionados] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
 
   const [formEdit, setFormEdit] = useState({
-    title: "",
-    store: "",
-    original_url: "",
-    affiliate_url: "",
-    price: "",
-    price_original: "",
-    discount_percent: "",
-    commission: "",
-    image_url: "",
-    source: "manual",
-    categories: "",
+    title: "", store: "", original_url: "", affiliate_url: "",
+    price: "", price_original: "", discount_percent: "",
+    commission: "", image_url: "", source: "manual", categories: "",
   });
 
-  async function fetchProdutos() {
-    const res = await axios.get("https://promo-scda.onrender.com/api/produtos");
-    setProdutos(res.data.reverse());
+  function showToast(text, type = "ok") {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3500);
   }
 
-  // Selecionar / desmarcar produto
-  function toggleSelecionado(id) {
-    setSelecionados((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  async function fetchProdutos() {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/api/produtos`);
+      setProdutos(res.data.reverse());
+    } finally {
+      setLoading(false);
+    }
   }
+
+  // Selecionar / desmarcar
+  function toggleSelecionado(id) {
+    setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  // Selecionar todos / nenhum
+  function toggleTodos() {
+    if (selecionados.length === produtos.length) {
+      setSelecionados([]);
+    } else {
+      setSelecionados(produtos.map(p => p._id));
+    }
+  }
+
+  const todosSelecionados = produtos.length > 0 && selecionados.length === produtos.length;
+  const algunsSelecionados = selecionados.length > 0 && selecionados.length < produtos.length;
 
   async function adicionarAFila() {
-    if (selecionados.length === 0) {
-      alert("Selecione pelo menos 1 produto!");
-      return;
-    }
-
+    if (!selecionados.length) return showToast("Selecione pelo menos 1 produto!", "err");
     try {
-      await axios.post("https://promo-scda.onrender.com/api/bot/fila", {
-        produtos: selecionados,
-      });
-
-      alert("Produtos adicionados à fila!");
+      await axios.post(`${API}/api/bot/fila`, { produtos: selecionados });
+      showToast(`${selecionados.length} produto(s) adicionado(s) à fila!`);
       setSelecionados([]);
-
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao adicionar à fila!");
-    }
+    } catch { showToast("Erro ao adicionar à fila!", "err"); }
   }
 
-  // ENVIAR MULTIPLOS PRODUTOS
   async function enviarSelecionados() {
+    if (!selecionados.length) return showToast("Selecione pelo menos 1 produto!", "err");
     try {
-      await axios.post("https://promo-scda.onrender.com/api/bot/enviar", {
+      await axios.post(`${API}/api/bot/enviar`, {
         produtos: selecionados,
         chatId: "120363422814810115@g.us"
       });
-      alert("Produtos enviados para o WhatsApp!");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao enviar ao WhatsApp");
-    }
+      showToast(`${selecionados.length} produto(s) enviado(s) para o WhatsApp!`);
+      setSelecionados([]);
+    } catch { showToast("Erro ao enviar ao WhatsApp!", "err"); }
   }
-
 
   async function buscarProduto(e) {
     e.preventDefault();
     if (!busca.trim()) return fetchProdutos();
-
     try {
-      let p = await axios.get(`https://promo-scda.onrender.com/api/produtos/${busca}`);
+      const p = await axios.get(`${API}/api/produtos/${busca}`);
       setProdutos([p.data]);
     } catch {
-      const res = await axios.get("https://promo-scda.onrender.com/api/produtos");
-      const filtrados = res.data.filter((prod) =>
-        prod.title.toLowerCase().includes(busca.toLowerCase())
-      );
-
-      if (filtrados.length === 0) alert("Nenhum produto encontrado");
-
+      const res = await axios.get(`${API}/api/produtos`);
+      const filtrados = res.data.filter(p => p.title.toLowerCase().includes(busca.toLowerCase()));
+      if (!filtrados.length) showToast("Nenhum produto encontrado", "err");
       setProdutos(filtrados);
     }
   }
 
-  async function deletar(id) {
-    if (!confirm("Tem certeza que deseja excluir?")) return;
-
-    await axios.delete(`https://promo-scda.onrender.com/api/produtos/${id}`);
+  async function deletar(id, e) {
+    e.stopPropagation();
+    if (!confirm("Excluir este produto?")) return;
+    await axios.delete(`${API}/api/produtos/${id}`);
+    showToast("Produto excluído!");
     fetchProdutos();
   }
 
   async function deletarSelecionados() {
-    if (selecionados.length === 0) {
-      alert("Selecione pelo menos 1 produto!");
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja excluir ${selecionados.length} produtos?`))
-      return;
-
+    if (!selecionados.length) return showToast("Selecione pelo menos 1 produto!", "err");
+    if (!confirm(`Excluir ${selecionados.length} produto(s)?`)) return;
     try {
-      await axios.post("https://promo-scda.onrender.com/api/produtos/delete-multiple", {
-        ids: selecionados,
-      });
-
-      alert("Produtos excluídos com sucesso!");
+      await axios.post(`${API}/api/produtos/delete-multiple`, { ids: selecionados });
+      showToast(`${selecionados.length} produto(s) excluído(s)!`);
       setSelecionados([]);
       fetchProdutos();
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao excluir itens!");
-    }
+    } catch { showToast("Erro ao excluir!", "err"); }
   }
 
-
-  function startEdit(p) {
+  function startEdit(p, e) {
+    e.stopPropagation();
     setEditando(p._id);
     setFormEdit({
-      title: p.title,
-      store: p.store,
-      original_url: p.original_url,
-      affiliate_url: p.affiliate_url,
-      price: p.price,
-      commission: p.commission,
-      price_original: p.price_original,
-      discount_percent: p.discount_percent,
-      image_url: p.image_url,
-      source: p.source,
-      categories: p.categories || "",
+      title: p.title, store: p.store, original_url: p.original_url,
+      affiliate_url: p.affiliate_url, price: p.price, commission: p.commission,
+      price_original: p.price_original, discount_percent: p.discount_percent,
+      image_url: p.image_url, source: p.source, categories: p.categories || "",
     });
   }
 
-  async function salvarEdicao() {
-    await axios.put(`https://promo-scda.onrender.com/api/produtos/${editando}`, formEdit);
+  async function salvarEdicao(e) {
+    e.stopPropagation();
+    await axios.put(`${API}/api/produtos/${editando}`, formEdit);
     setEditando(null);
+    showToast("Produto atualizado!");
     fetchProdutos();
   }
 
-  function ordenarPorCategoria() {
+  function handleSort(field) {
+    if (sortField === field) {
+      setSortAsc(a => !a);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
     const sorted = [...produtos].sort((a, b) => {
-      const c1 = (a.categories || "").toLowerCase();
-      const c2 = (b.categories || "").toLowerCase();
-
-      if (!c1) return 1;
-      if (!c2) return -1;
-
-      return sortAsc ? c1.localeCompare(c2) : c2.localeCompare(c1);
+      const va = (a[field] ?? "").toString().toLowerCase();
+      const vb = (b[field] ?? "").toString().toLowerCase();
+      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-
     setProdutos(sorted);
-    setSortAsc(!sortAsc);
   }
 
-  useEffect(() => {
-    fetchProdutos();
-  }, []);
+  function SortIcon({ field }) {
+    if (sortField !== field) return <ChevronUp className="w-3 h-3 opacity-20" />;
+    return sortAsc ? <ChevronUp className="w-3 h-3 text-orange-400" /> : <ChevronDown className="w-3 h-3 text-orange-400" />;
+  }
+
+  useEffect(() => { fetchProdutos(); }, []);
+
+  const toastColors = {
+    ok: "bg-green-900 border-green-600 text-green-200",
+    err: "bg-red-900 border-red-600 text-red-200",
+    info: "bg-blue-900 border-blue-600 text-blue-200",
+  };
 
   return (
-    <div className="ps-2">
-      <h1 className="text-2xl font-bold mb-6">Lista de Produtos</h1>
+    <div className="min-h-screen bg-[#0e0e0e] text-white p-6 relative">
 
-      {/* BUSCA + BOTÃO ENVIAR SELECIONADOS */}
-      <form
-        onSubmit={buscarProduto}
-        className="p-3 bg-[#242424] flex flex-col md:flex-row md:justify-between md:items-center gap-3 rounded-t-lg"
-      >
-        {/* BUSCA */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center w-full md:w-auto">
-          <label htmlFor="buscar" className="text-white text-sm sm:text-base">
-            Buscar
-          </label>
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl border text-sm font-medium shadow-2xl transition-all ${toastColors[toast.type]}`}>
+          {toast.text}
+        </div>
+      )}
 
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Produtos</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{produtos.length} produto(s) cadastrado(s)</p>
+        </div>
+
+        {selecionados.length > 0 && (
+          <div className="flex items-center gap-2 bg-[#1a1a1a] border border-[#333] rounded-xl px-4 py-2">
+            <span className="text-sm text-orange-400 font-semibold mr-2">{selecionados.length} selecionado(s)</span>
+            <button onClick={enviarSelecionados} className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+              <Send className="w-3.5 h-3.5" /> Enviar WPP
+            </button>
+            <button onClick={adicionarAFila} className="flex items-center gap-1.5 bg-[#333] hover:bg-[#444] px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+              <Clock className="w-3.5 h-3.5" /> Fila
+            </button>
+            <button onClick={deletarSelecionados} className="flex items-center gap-1.5 bg-red-700 hover:bg-red-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+              <Trash className="w-3.5 h-3.5" /> Excluir
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Barra de busca */}
+      <form onSubmit={buscarProduto} className="flex gap-2 mb-5">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
-            className="border border-white rounded-4xl text-white p-1 ps-4 bg-transparent outline-none w-full sm:w-60"
-            id="buscar"
             type="text"
             value={busca}
-            onChange={(e) => setBusca(e.target.value)}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar produto..."
+            className="w-full bg-[#1a1a1a] border border-[#333] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-orange-500 focus:outline-none"
           />
-
-          <button className="bg-blue-600 px-4 py-1 rounded text-white text-sm sm:text-base w-full sm:w-auto">
-            OK
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setBusca("");
-              fetchProdutos();
-            }}
-            className="bg-gray-600 px-4 py-1 rounded text-white text-sm sm:text-base w-full sm:w-auto"
-          >
-            Limpar
-          </button>
         </div>
-
-        {/* BOTÕES LADO DIREITO */}
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <button
-            type="button"
-            onClick={deletarSelecionados}
-            className="bg-red-700 px-4 py-1 rounded text-white text-sm sm:text-base w-full sm:w-auto"
-          >
-            Excluir Selecionados
-          </button>
-
-          <button
-            type="button"
-            onClick={adicionarAFila}
-            className="bg-gray-600 px-4 py-1 rounded text-white text-sm sm:text-base w-full sm:w-auto"
-          >
-            Adicionar à fila
-          </button>
-
-          <button
-            type="button"
-            onClick={enviarSelecionados}
-            className="bg-green-600 px-4 py-1 rounded text-white text-sm sm:text-base w-full sm:w-auto"
-          >
-            Enviar Selecionados
-          </button>
-        </div>
+        <button type="submit" className="bg-orange-500 hover:bg-orange-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all">Buscar</button>
+        <button type="button" onClick={() => { setBusca(""); fetchProdutos(); }} className="bg-[#1a1a1a] border border-[#333] hover:border-[#555] px-5 py-2.5 rounded-xl text-sm text-gray-400 transition-all">Limpar</button>
       </form>
 
-      {/* TABELA RESPONSIVA */}
-      <div className="overflow-x-auto shadow-xl rounded-b-lg">
-        <table className="min-w-full bg-[#1f1f1f] text-white text-sm sm:text-base">
-          <thead>
-            <tr className="bg-[#2c2c2c] text-center text-xs sm:text-sm uppercase">
-              <th className="p-3"></th>
-              <th className="p-3">Imagem</th>
-              <th className="p-3">Título</th>
-              <th className="p-3">Loja</th>
-              <th className="p-3">Preço</th>
-              <th
-                className="p-3 w-36 cursor-pointer"
-                onClick={ordenarPorCategoria}
-              >
-                <span className="flex justify-center">
-                  categorias{sortAsc ? " ▲" : " ▼"}
-                </span>
-              </th>
-              <th className="p-3">Comissão</th>
-              <th className="p-3">Origem</th>
-              <th className="p-3 w-32 sm:w-36">Ações</th>
-            </tr>
-          </thead>
+      {/* Tabela */}
+      <div className="rounded-xl overflow-hidden border border-[#222] shadow-2xl">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="bg-[#161616] text-gray-400 text-xs uppercase tracking-wider">
 
-          <tbody className="text-center">
-            {produtos.map((p) => (
-              <tr
-                key={p._id}
-                className="border-b border-[#333] hover:bg-[#2a2a2a]"
-                onClick={() => toggleSelecionado(p._id)}
-              >
-                {/* CHECKBOX */}
-                <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={selecionados.includes(p._id)}
-                    onChange={() => toggleSelecionado(p._id)}
-                    className="scale-125 pointer-events-none"
-                  />
-                </td>
+                {/* Checkbox global */}
+                <th className="px-4 py-3 w-10">
+                  <button onClick={toggleTodos} className="flex items-center justify-center">
+                    {todosSelecionados
+                      ? <CheckSquare className="w-4 h-4 text-orange-400" />
+                      : algunsSelecionados
+                        ? <div className="w-4 h-4 rounded border-2 border-orange-400 bg-orange-400/30" />
+                        : <Square className="w-4 h-4 text-gray-600" />
+                    }
+                  </button>
+                </th>
 
-                {/* IMAGEM */}
-                <td className="p-3">
-                  <img
-                    src={p.image_url}
-                    className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded"
-                  />
-                </td>
+                <th className="px-3 py-3 w-16 text-center">Img</th>
 
-                {/* TÍTULO */}
-                <td className="p-3 max-w-[200px] sm:max-w-none break-words">
-                  {editando === p._id ? (
-                    <input
-                      className="bg-[#333] p-1 rounded w-full"
-                      value={formEdit.title}
-                      onChange={(e) =>
-                        setFormEdit({ ...formEdit, title: e.target.value })
-                      }
-                    />
-                  ) : (
-                    p.title
-                  )}
-                </td>
+                <th className="px-3 py-3 text-left cursor-pointer hover:text-white" onClick={() => handleSort("title")}>
+                  <span className="flex items-center gap-1">Título <SortIcon field="title" /></span>
+                </th>
 
-                {/* LOJA */}
-                <td className="p-3 capitalize">
-                  {editando === p._id ? (
-                    <input
-                      className="bg-[#333] p-1 rounded w-full"
-                      value={formEdit.store}
-                      onChange={(e) =>
-                        setFormEdit({ ...formEdit, store: e.target.value })
-                      }
-                    />
-                  ) : (
-                    p.store
-                  )}
-                </td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("store")}>
+                  <span className="flex items-center justify-center gap-1">Loja <SortIcon field="store" /></span>
+                </th>
 
-                {/* PREÇO */}
-                <td className="p-3">
-                  {editando === p._id ? (
-                    <input
-                      className="bg-[#333] p-1 rounded w-full"
-                      value={formEdit.price}
-                      onChange={(e) =>
-                        setFormEdit({ ...formEdit, price: e.target.value })
-                      }
-                    />
-                  ) : p.price ? (
-                    `R$ ${p.price.toFixed(2)}`
-                  ) : (
-                    "--"
-                  )}
-                </td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("price")}>
+                  <span className="flex items-center justify-center gap-1">Preço <SortIcon field="price" /></span>
+                </th>
 
-                {/* CATEGORIA */}
-                <td className="p-3">
-                  {editando === p._id ? (
-                    <input
-                      className="bg-[#333] p-1 rounded w-full"
-                      value={formEdit.categories}
-                      onChange={(e) =>
-                        setFormEdit({ ...formEdit, categories: e.target.value })
-                      }
-                    />
-                  ) : p.categories ? (
-                    p.categories
-                  ) : (
-                    "--"
-                  )}
-                </td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("discount_percent")}>
+                  <span className="flex items-center justify-center gap-1">Desc. <SortIcon field="discount_percent" /></span>
+                </th>
 
-                {/* COMISSÃO */}
-                <td className="p-3">
-                  {editando === p._id ? (
-                    <input
-                      className="bg-[#333] p-1 rounded w-full"
-                      value={formEdit.commission}
-                      onChange={(e) =>
-                        setFormEdit({ ...formEdit, commission: e.target.value })
-                      }
-                    />
-                  ) : p.commission ? (
-                    `R$ ${p.commission}`
-                  ) : (
-                    "--"
-                  )}
-                </td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("categories")}>
+                  <span className="flex items-center justify-center gap-1">Categoria <SortIcon field="categories" /></span>
+                </th>
 
-                {/* ORIGEM */}
-                <td className="p-3 capitalize">{p.source}</td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("commission")}>
+                  <span className="flex items-center justify-center gap-1">Comissão <SortIcon field="commission" /></span>
+                </th>
 
-                {/* AÇÕES */}
-                <td className="flex justify-center gap-3 p-3">
-                  {editando === p._id ? (
-                    <>
-                      <button onClick={salvarEdicao}>
-                        <Save className="text-green-400 w-5 h-5" />
-                      </button>
-                      <button onClick={() => setEditando(null)}>
-                        <X className="text-red-400 w-5 h-5" />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => startEdit(p)}>
-                        <Edit className="text-blue-400 w-5 h-5" />
-                      </button>
-                      <button onClick={() => deletar(p._id)}>
-                        <Trash className="text-red-500 w-5 h-5" />
-                      </button>
-                    </>
-                  )}
-                </td>
+                <th className="px-3 py-3 text-center cursor-pointer hover:text-white" onClick={() => handleSort("source")}>
+                  <span className="flex items-center justify-center gap-1">Origem <SortIcon field="source" /></span>
+                </th>
+
+                <th className="px-3 py-3 text-center w-24">Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-gray-600">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm">Carregando produtos...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : produtos.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-20 text-center text-gray-600 text-sm">
+                    Nenhum produto encontrado
+                  </td>
+                </tr>
+              ) : produtos.map((p, idx) => {
+                const sel = selecionados.includes(p._id);
+                return (
+                  <tr
+                    key={p._id}
+                    onClick={() => toggleSelecionado(p._id)}
+                    className={`border-b border-[#1a1a1a] cursor-pointer transition-colors ${
+                      sel ? "bg-orange-500/8 hover:bg-orange-500/12" : idx % 2 === 0 ? "bg-[#141414] hover:bg-[#1c1c1c]" : "bg-[#111] hover:bg-[#1c1c1c]"
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={sel}
+                        onChange={() => toggleSelecionado(p._id)}
+                        className="accent-orange-500 w-4 h-4 cursor-pointer"
+                      />
+                    </td>
+
+                    {/* Imagem */}
+                    <td className="px-3 py-2.5 text-center">
+                      <img
+                        src={p.image_url}
+                        alt=""
+                        className="w-12 h-12 object-cover rounded-lg mx-auto bg-[#222]"
+                        onError={e => { e.target.style.display = "none"; }}
+                      />
+                    </td>
+
+                    {/* Título */}
+                    <td className="px-3 py-2.5 max-w-xs">
+                      {editando === p._id ? (
+                        <input
+                          className="bg-[#222] border border-[#444] p-1.5 rounded-lg w-full text-xs focus:border-orange-500 focus:outline-none"
+                          value={formEdit.title}
+                          onChange={e => setFormEdit({ ...formEdit, title: e.target.value })}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-gray-200 text-xs leading-snug line-clamp-2">{p.title}</span>
+                      )}
+                    </td>
+
+                    {/* Loja */}
+                    <td className="px-3 py-2.5 text-center">
+                      {editando === p._id ? (
+                        <input
+                          className="bg-[#222] border border-[#444] p-1.5 rounded-lg w-20 text-xs focus:border-orange-500 focus:outline-none text-center"
+                          value={formEdit.store}
+                          onChange={e => setFormEdit({ ...formEdit, store: e.target.value })}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-xs px-2 py-1 bg-[#222] rounded-md text-gray-400 capitalize">{p.store || "—"}</span>
+                      )}
+                    </td>
+
+                    {/* Preço */}
+                    <td className="px-3 py-2.5 text-center">
+                      {editando === p._id ? (
+                        <input
+                          type="number"
+                          className="bg-[#222] border border-[#444] p-1.5 rounded-lg w-20 text-xs focus:border-orange-500 focus:outline-none text-center"
+                          value={formEdit.price}
+                          onChange={e => setFormEdit({ ...formEdit, price: e.target.value })}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-green-400 font-semibold text-xs">
+                          {p.price ? `R$ ${Number(p.price).toFixed(2)}` : "—"}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Desconto */}
+                    <td className="px-3 py-2.5 text-center">
+                      {p.discount_percent ? (
+                        <span className="text-xs px-2 py-0.5 bg-red-900/60 text-red-300 rounded-full font-semibold">
+                          -{p.discount_percent}%
+                        </span>
+                      ) : "—"}
+                    </td>
+
+                    {/* Categoria */}
+                    <td className="px-3 py-2.5 text-center">
+                      {editando === p._id ? (
+                        <input
+                          className="bg-[#222] border border-[#444] p-1.5 rounded-lg w-24 text-xs focus:border-orange-500 focus:outline-none text-center"
+                          value={formEdit.categories}
+                          onChange={e => setFormEdit({ ...formEdit, categories: e.target.value })}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-xs text-gray-400">{p.categories || "—"}</span>
+                      )}
+                    </td>
+
+                    {/* Comissão */}
+                    <td className="px-3 py-2.5 text-center">
+                      {editando === p._id ? (
+                        <input
+                          className="bg-[#222] border border-[#444] p-1.5 rounded-lg w-20 text-xs focus:border-orange-500 focus:outline-none text-center"
+                          value={formEdit.commission}
+                          onChange={e => setFormEdit({ ...formEdit, commission: e.target.value })}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-xs text-yellow-400">{p.commission ? `R$ ${p.commission}` : "—"}</span>
+                      )}
+                    </td>
+
+                    {/* Origem */}
+                    <td className="px-3 py-2.5 text-center">
+                      <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${
+                        p.source === "api" ? "bg-blue-900/60 text-blue-300" :
+                        p.source === "manual" ? "bg-purple-900/60 text-purple-300" :
+                        "bg-[#222] text-gray-500"
+                      }`}>
+                        {p.source}
+                      </span>
+                    </td>
+
+                    {/* Ações */}
+                    <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-2">
+                        {editando === p._id ? (
+                          <>
+                            <button onClick={salvarEdicao} className="p-1.5 rounded-lg bg-green-600/20 hover:bg-green-600/40 transition-colors">
+                              <Save className="w-3.5 h-3.5 text-green-400" />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); setEditando(null); }} className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 transition-colors">
+                              <X className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={e => startEdit(p, e)} className="p-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 transition-colors">
+                              <Edit className="w-3.5 h-3.5 text-blue-400" />
+                            </button>
+                            <button onClick={e => deletar(p._id, e)} className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 transition-colors">
+                              <Trash className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Rodapé com contagem */}
+      {!loading && produtos.length > 0 && (
+        <div className="mt-3 flex items-center justify-between text-xs text-gray-600 px-1">
+          <span>{produtos.length} produto(s) · {selecionados.length} selecionado(s)</span>
+          {selecionados.length > 0 && (
+            <button onClick={() => setSelecionados([])} className="text-gray-500 hover:text-gray-300 transition-colors">
+              Limpar seleção
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
