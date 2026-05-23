@@ -1,110 +1,107 @@
-import pkg from "whatsapp-web.js";
-const { Client, RemoteAuth, MessageMedia } = pkg;
-import { MongoStore } from "wwebjs-mongo";
+import makeWASocket, {
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    initAuthCreds,
+    BufferJSON,
+    makeCacheableSignalKeyStore
+} from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
 import mongoose from "mongoose";
-import qrcode from "qrcode-terminal";
 import axios from "axios";
+import pino from "pino";
 
-let client = null;
+// ─────────────────────────────────────────
+// Schema MongoDB para salvar sessao Baileys
+// ─────────────────────────────────────────
+let AuthModel;
+function getAuthModel() {
+    if (AuthModel) return AuthModel;
+    try {
+        AuthModel = mongoose.model("WAuthState");
+    } catch {
+        AuthModel = mongoose.model("WAuthState", new mongoose.Schema({
+            _id: String,
+            value: String
+        }));
+    }
+    return AuthModel;
+}
+
+async function writeData(id, data) {
+    const Model = getAuthModel();
+    const value = JSON.stringify(data, BufferJSON.replacer);
+    await Model.findByIdAndUpdate(id, { value }, { upsert: true, new: true });
+}
+
+async function readData(id) {
+    const Model = getAuthModel();
+    const doc = await Model.findById(id);
+    if (!doc) return null;
+    try { return JSON.parse(doc.value, BufferJSON.reviver); } catch { return null; }
+}
+
+async function removeData(id) {
+    const Model = getAuthModel();
+    await Model.findByIdAndDelete(id);
+}
+
+async function useMongoAuthState() {
+    const creds = (await readData("creds")) || initAuthCreds();
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(ids.map(async id => {
+                        const val = await readData(type + "-" + id);
+                        if (val) data[id] = val;
+                    }));
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category in data) {
+                        for (const id in data[category]) {
+                            const val = data[category][id];
+                            const key = category + "-" + id;
+                            tasks.push(val ? writeData(key, val) : removeData(key));
+                        }
+                    }
+                    await Promise.all(tasks);
+                }
+            }
+        },
+        saveCreds: async () => {
+            await writeData("creds", creds);
+        }
+    };
+}
+
+// ─────────────────────────────────────────
+// Estado global do bot
+// ─────────────────────────────────────────
+let sock = null;
 let currentQrUrl = null;
 let botStatus = "aguardando_banco";
 let clientReady = false;
-let initTimeout = null;
+let reconnectTimer = null;
 
-let resolveReady;
-let readyPromise = new Promise(res => { resolveReady = res; });
+export function getQrUrl() { return currentQrUrl; }
+export function getBotStatus() { return botStatus; }
+export function isClientReady() { return clientReady; }
 
-function criarCliente(store) {
-    return new Client({
-        authStrategy: new RemoteAuth({
-            store,
-            backupSyncIntervalMs: 300000,
-        }),
-        authTimeoutMs: 120000,
-        puppeteer: {
-            headless: true,
-            // Flags otimizadas para Render — sem --single-process (causa travamento)
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-accelerated-2d-canvas",
-                "--disable-gpu",
-                "--no-first-run",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-default-apps",
-                "--disable-sync",
-                "--disable-translate",
-                "--hide-scrollbars",
-                "--metrics-recording-only",
-                "--mute-audio",
-                "--safebrowsing-disable-auto-update"
-            ],
-            timeout: 120000,
-            userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36"
-        }
-    });
+function agendarReinicializacao(delayMs) {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    console.log("Reinicializando bot em " + (delayMs / 1000) + "s...");
+    reconnectTimer = setTimeout(() => inicializarBot(), delayMs);
 }
 
-function registrarEventos(c) {
-    c.on("qr", qr => {
-        console.log("--- NOVO QR CODE GERADO ---");
-        currentQrUrl = "https://quickchart.io/qr?text=" + encodeURIComponent(qr) + "&size=300";
-        botStatus = "aguardando_qr";
-        console.log("QR CODE DISPONIVEL - Acesse: https://promo-scda.onrender.com/api/bot/qr");
-        try { qrcode.generate(qr, { small: true }); } catch (e) {}
-    });
-
-    c.on("authenticated", () => {
-        botStatus = "autenticado";
-        console.log("WhatsApp autenticado! Aguardando evento ready...");
-    });
-
-    c.on("remote_session_saved", () => {
-        console.log("Sessao salva no MongoDB!");
-    });
-
-    c.on("ready", () => {
-        // Cancela o timeout de watchdog se existir
-        if (initTimeout) { clearTimeout(initTimeout); initTimeout = null; }
-
-        currentQrUrl = null;
-        botStatus = "conectado";
-        clientReady = true;
-        resolveReady();
-        console.log("BOT DO WHATSAPP ESTA PRONTO!");
-    });
-
-    c.on("auth_failure", (msg) => {
-        botStatus = "erro_auth";
-        console.error("Falha na autenticacao:", msg);
-        agendarReinicializacao(30000);
-    });
-
-    c.on("disconnected", (reason) => {
-        if (initTimeout) { clearTimeout(initTimeout); initTimeout = null; }
-        botStatus = "desconectado";
-        clientReady = false;
-        readyPromise = new Promise(res => { resolveReady = res; });
-        console.log("Bot desconectado:", reason);
-        agendarReinicializacao(reason === "LOGOUT" ? 5000 : 15000);
-    });
-}
-
-function agendarReinicializacao(delay) {
-    console.log("Reinicializando bot em " + (delay / 1000) + "s...");
-    setTimeout(() => inicializarBot(), delay);
-}
-
+// ─────────────────────────────────────────
+// Inicializacao do bot
+// ─────────────────────────────────────────
 export async function inicializarBot() {
     try {
-        if (client) {
-            try { await client.destroy(); } catch (e) {}
-            client = null;
-            clientReady = false;
-        }
-
         if (mongoose.connection.readyState !== 1) {
             console.log("Aguardando MongoDB...");
             await new Promise((resolve, reject) => {
@@ -113,56 +110,105 @@ export async function inicializarBot() {
             });
         }
 
-        console.log("Inicializando bot com RemoteAuth...");
-        const store = new MongoStore({ mongoose });
-        client = criarCliente(store);
-        registrarEventos(client);
+        console.log("Inicializando Baileys com sessao MongoDB...");
+        const { version } = await fetchLatestBaileysVersion();
+        const { state, saveCreds } = await useMongoAuthState();
 
-        // Watchdog: se apos 3 minutos ainda nao chegou o "ready", reinicia
-        initTimeout = setTimeout(() => {
-            if (!clientReady) {
-                console.log("Watchdog: bot autenticou mas nao ficou pronto em 3min. Reiniciando...");
-                agendarReinicializacao(5000);
+        sock = makeWASocket({
+            version,
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
+            },
+            logger: pino({ level: "silent" }),
+            printQRInTerminal: false,  // geramos a URL manualmente
+            browser: ["PromoBot", "Chrome", "111.0.0"],
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 25000,
+            retryRequestDelayMs: 2000,
+        });
+
+        // Salva credenciais sempre que atualizarem
+        sock.ev.on("creds.update", saveCreds);
+
+        // Eventos de conexao
+        sock.ev.on("connection.update", (update) => {
+            const { connection, lastDisconnect, qr } = update;
+
+            if (qr) {
+                currentQrUrl = "https://quickchart.io/qr?text=" + encodeURIComponent(qr) + "&size=300";
+                botStatus = "aguardando_qr";
+                console.log("QR CODE DISPONIVEL - Acesse: https://promo-scda.onrender.com/api/bot/qr");
             }
-        }, 180000);
 
-        await client.initialize();
-        console.log("Cliente inicializado, aguardando evento ready...");
+            if (connection === "open") {
+                currentQrUrl = null;
+                botStatus = "conectado";
+                clientReady = true;
+                console.log("BOT DO WHATSAPP ESTA PRONTO!");
+            }
+
+            if (connection === "close") {
+                clientReady = false;
+                botStatus = "desconectado";
+                const statusCode = (lastDisconnect?.error instanceof Boom)
+                    ? lastDisconnect.error.output?.statusCode
+                    : 0;
+
+                console.log("Conexao encerrada. Codigo:", statusCode);
+
+                // 401 = LoggedOut (precisa de novo QR)
+                // Qualquer outro = tenta reconectar
+                if (statusCode === DisconnectReason.loggedOut) {
+                    console.log("Sessao encerrada (logout). Limpando credenciais e reiniciando...");
+                    // Limpa sessao do MongoDB para forcar novo QR
+                    getAuthModel().deleteMany({}).catch(() => {});
+                    agendarReinicializacao(5000);
+                } else {
+                    agendarReinicializacao(10000);
+                }
+            }
+        });
+
+        console.log("Baileys inicializado com sucesso!");
     } catch (err) {
-        console.error("Erro ao inicializar o bot:", err.message);
+        console.error("Erro ao inicializar bot:", err.message);
         agendarReinicializacao(30000);
     }
 }
 
-export function getQrUrl() { return currentQrUrl; }
-export function getBotStatus() { return botStatus; }
-export function isClientReady() { return clientReady; }
-
+// ─────────────────────────────────────────
+// Envio de mensagem com imagem
+// ─────────────────────────────────────────
 export async function enviarMensagem(produto, groupId) {
-    // Nao tenta aguardar — se nao esta pronto, falha imediatamente com erro claro
-    if (!clientReady) {
-        throw new Error("Bot nao esta pronto. Status atual: " + botStatus);
+    if (!clientReady || !sock) {
+        throw new Error("Bot nao esta pronto. Status: " + botStatus);
     }
 
+    // Baixa a imagem
     const resposta = await axios.get(produto.image_url, {
         responseType: "arraybuffer",
         timeout: 15000
     });
+    const imageBuffer = Buffer.from(resposta.data);
 
-    const base64Image = Buffer.from(resposta.data, "binary").toString("base64");
-    const media = new MessageMedia("image/jpeg", base64Image);
-
+    // Monta o texto
     let precoOriginalLinha = "";
     if (produto.price_original && produto.price_original > produto.price) {
         precoOriginalLinha = "DE: ~R$ " + produto.price_original + "~\n";
     }
-
-    let precoAtualLinha = (produto.price_original > produto.price)
+    const precoAtualLinha = (produto.price_original > produto.price)
         ? "POR: *R$ " + produto.price + "*\n"
         : "Preco: R$ " + produto.price;
 
     const mensagem = "*OFERTA ESPECIAL*\n\n*" + produto.title + "*\n\nLoja: *" + produto.store + "*\n" + precoOriginalLinha + precoAtualLinha + "\n\nLink: " + produto.affiliate_url;
 
-    await client.sendMessage(groupId, media, { caption: mensagem });
+    // Envia imagem com legenda
+    await sock.sendMessage(groupId, {
+        image: imageBuffer,
+        caption: mensagem,
+        mimetype: "image/jpeg"
+    });
+
     console.log("Mensagem enviada: " + produto.title);
 }
