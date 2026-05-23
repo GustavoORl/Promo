@@ -12,24 +12,48 @@ function generateAuthHeader(payload) {
     .createHash("sha256")
     .update(signatureBase)
     .digest("hex");
-
   return `SHA256 Credential=${APP_ID}, Timestamp=${timestamp}, Signature=${signature}`;
 }
 
-// Busca uma página de produtos
-// page: número da página (começa em 1)
-// limit: quantidade por página (máx 50)
-export async function fetchShopeeOffers(keyword, limit = 5, page = 1) {
+/*
+  listType:
+    0 = Todos os produtos
+    1 = Ofertas relampago (Flash Sale)
+    2 = Produtos com desconto
+    4 = Top vendidos / Tendencias
+
+  sortType:
+    1 = Relevância
+    2 = Maior desconto
+    3 = Mais vendidos
+    4 = Maior comissão
+    5 = Preço: menor para maior
+    6 = Preço: maior para menor
+    7 = Mais recentes
+
+  isAMSOffer:
+    true  = Apenas produtos patrocinados (AMS)
+    false = Todos os produtos
+*/
+export async function fetchShopeeOffers(keyword = "", limit = 5, page = 1, options = {}) {
+  const {
+    listType = 0,
+    sortType = 1,
+    isAMSOffer = false,
+  } = options;
+
+  const keywordParam = keyword ? `keyword: "${keyword}",` : "";
+
   const payloadObj = {
     query: `
       {
         productOfferV2(
-          keyword: "${keyword}",
+          ${keywordParam}
           page: ${page},
           limit: ${limit},
-          isAMSOffer: true,
-          listType: 2,
-          sortType: 2
+          isAMSOffer: ${isAMSOffer},
+          listType: ${listType},
+          sortType: ${sortType}
         ) {
           nodes {
             itemId
@@ -56,29 +80,19 @@ export async function fetchShopeeOffers(keyword, limit = 5, page = 1) {
   const auth = generateAuthHeader(payload);
 
   try {
-    const response = await axios.post(
-      ENDPOINT,
-      payloadObj,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: auth,
-        },
-      }
-    );
-
+    const response = await axios.post(ENDPOINT, payloadObj, {
+      headers: { "Content-Type": "application/json", Authorization: auth },
+    });
     return response.data;
   } catch (err) {
-    console.error("❌ Erro ao consultar API da Shopee:", err.response?.data || err);
+    console.error("Erro ao consultar API da Shopee:", err.response?.data || err.message);
     return null;
   }
 }
 
-// Busca múltiplas páginas até atingir o totalLimit desejado
-export async function fetchShopeeCustomLimit(keyword = "lovita", totalLimit = 200) {
+export async function fetchShopeeCustomLimit(keyword = "", totalLimit = 100, options = {}) {
   const allNodes = [];
-  const pageLimit = 50; // cada página retorna no máximo 50 itens
-
+  const pageLimit = 50;
   let page = 1;
   let hasNextPage = true;
 
@@ -86,12 +100,12 @@ export async function fetchShopeeCustomLimit(keyword = "lovita", totalLimit = 20
     const remaining = totalLimit - allNodes.length;
     const currentLimit = Math.min(remaining, pageLimit);
 
-    console.log(`📄 Buscando página ${page}, limit ${currentLimit}...`);
+    console.log(`Buscando pagina ${page}, limit ${currentLimit} (listType=${options.listType ?? 0}, sortType=${options.sortType ?? 1})...`);
 
-    const data = await fetchShopeeOffers(keyword, currentLimit, page);
+    const data = await fetchShopeeOffers(keyword, currentLimit, page, options);
 
     if (!data || data.errors) {
-      console.error("❌ Erro ao buscar página:", page, data?.errors);
+      console.error("Erro ao buscar pagina:", page, data?.errors);
       break;
     }
 
@@ -99,7 +113,7 @@ export async function fetchShopeeCustomLimit(keyword = "lovita", totalLimit = 20
     const nodes = data.data?.productOfferV2?.nodes;
 
     if (!nodes || nodes.length === 0) {
-      console.log("⚠️ Nenhum resultado na página", page);
+      console.log("Nenhum resultado na pagina", page);
       break;
     }
 
@@ -108,6 +122,6 @@ export async function fetchShopeeCustomLimit(keyword = "lovita", totalLimit = 20
     page++;
   }
 
-  console.log(`✅ Total de produtos buscados: ${allNodes.length}`);
+  console.log(`Total de produtos buscados: ${allNodes.length}`);
   return allNodes.slice(0, totalLimit);
 }
